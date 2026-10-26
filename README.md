@@ -35,8 +35,8 @@ inside usdtweak; restart with `CYCLES_DEVICE=CPU` to compare.
 The first Cycles render on Metal compiles the GPU kernels (~2.5 min on an
 M4 Pro). They are cached, later renders start in seconds.
 
-Cycles is the default viewport renderer: usdtweak picks the first plugin in
-Hydra's list, and that is Cycles.
+Storm is the default viewport renderer. Pick Cycles in the viewport's renderer
+menu.
 
 ## What the patches fix
 

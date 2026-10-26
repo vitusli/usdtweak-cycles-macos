@@ -287,7 +287,7 @@ cat > "${PLUGIN_DIR}/resources/plugInfo.json" << 'PLUGINFO'
                     "HdCyclesPlugin": {
                         "bases": ["HdRendererPlugin"],
                         "displayName": "Cycles",
-                        "priority": 0
+                        "priority": 1
                     }
                 }
             },

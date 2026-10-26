@@ -96,6 +96,10 @@ and the OpenUSD version. Don't repeat the upstream changelogs or the README.
 - `blender-cycles-profile.patch`: adds `intern/profile` to the Cycles-only
   CMake path, which Blender `main` needs but only builds for full Blender.
 
+Cycles' `plugInfo.json` (written by `build.sh`) has priority 1 so Storm stays
+the default renderer: usdtweak takes the first plugin, and Hydra sorts lower
+priority first (checked on OpenUSD 26.08, contrary to the header docs).
+
 `build.sh` also copies Cycles' kernel sources (from `cmake --install`) into
 `hdCycles/resources/source`; Metal compiles them at runtime. And it cleans up
 after earlier builds: it reverts the patches before
