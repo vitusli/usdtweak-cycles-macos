@@ -11,13 +11,13 @@ for Cycles, and the newest OpenUSD from conda-forge (currently 26.08).
 
 ## Build from source
 
-Needs an Apple Silicon Mac, Xcode command line tools, `git-lfs` and ~30 GB of
+Needs an Apple Silicon Mac, Xcode command line tools, `git-lfs` and ~8 GB of
 disk. The script installs [pixi](https://pixi.sh) if it's missing.
 
 ```bash
 git clone https://github.com/vitusli/usdtweak-cycles-macos.git
 cd usdtweak-cycles-macos
-make build   # ~45 min the first time
+make build
 make run
 ```
 
@@ -32,11 +32,11 @@ There are no prebuilt downloads yet, see [License](#license).
 the GPU. Without it Cycles uses the CPU. The device can't be changed from
 inside usdtweak; restart with `CYCLES_DEVICE=CPU` to compare.
 
-The first Cycles render on Metal compiles the GPU kernels, which takes 2–3
-minutes. macOS caches them, later starts are fast.
+The first Cycles render on Metal compiles the GPU kernels (~2.5 min on an
+M4 Pro). They are cached, later renders start in seconds.
 
-Storm is the default viewport renderer. Switch the viewport to Cycles to path
-trace.
+Cycles is the default viewport renderer: usdtweak picks the first plugin in
+Hydra's list, and that is Cycles.
 
 ## What the patches fix
 
@@ -62,10 +62,9 @@ it to build or update usdtweak for you; [AGENTS.md](AGENTS.md) tells it how.
 ## License
 
 The build script and patches are
-[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), like
-usdtweak, Cycles and OpenUSD.
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 
-No prebuilt binaries, because `hdCycles.dylib` statically links Blender's
-`bf_intern_guardedalloc` (GPL-2.0-or-later). Build from source to use it.
+No prebuilt binaries: `hdCycles.dylib` contains Blender code under
+GPL-2.0-or-later (`intern/sky`), usdtweak is Apache 2.0. Build from source.
 
 Not affiliated with usdtweak, Blender or Pixar.

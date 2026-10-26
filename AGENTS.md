@@ -21,8 +21,7 @@ conda libs, so usdtweak and hdCycles share one USD.
 
 ## Building for a user
 
-`make build && make run` (needs Xcode CLT, git-lfs, ~30 GB, ~45 min the first
-time). `make run` sets `CYCLES_DEVICE=METAL`; without it hdCycles renders on
+`make build && make run` (needs Xcode CLT, git-lfs, ~8 GB). `make run` sets `CYCLES_DEVICE=METAL`; without it hdCycles renders on
 the CPU. The device is only read when the render delegate is created, so it
 can't be switched from the UI.
 
@@ -52,8 +51,8 @@ Goal: this repo always builds against the latest usdtweak, Cycles and OpenUSD.
   the log must say `Path tracing on: ... (Metal)` and contain no
   `kernel.metal` errors. Those errors mean the kernel sources are missing from
   `hdCycles/resources/source` and Cycles silently fell back to the CPU.
-- First Metal render compiles the kernels (2–3 min on an M4 Pro), that's
-  expected.
+- First Metal render compiles the kernels (~2.5 min on an M4 Pro), later
+  ones load them from the cache in seconds.
 - Don't use `usdrecord` for image checks: in the pixi env it returns flat
   images even for Storm, so it says nothing about Cycles.
 
@@ -61,10 +60,11 @@ Goal: this repo always builds against the latest usdtweak, Cycles and OpenUSD.
 
 Prebuilt releases are **not published yet**. Two things block them:
 
-1. **License.** `hdCycles.dylib` links Blender's `bf_intern_guardedalloc`
-   (GPL-2.0-or-later). Shipping it next to usdtweak (Apache 2.0) has to be
-   cleared first, e.g. by getting rid of guardedalloc in the hdCycles build
-   or by shipping the bundle as GPL-3.0 with sources. Ask the user, don't
+1. **License.** `hdCycles.dylib` compiles in Blender's `intern/sky`, whose
+   headers `sky_math.h` and `sky_nishita.h` are GPL-2.0-or-later.
+   `bf_intern_guardedalloc` (GPL) is on the link line too, but none of its
+   code ends up in the binary. Shipping this next to usdtweak (Apache 2.0)
+   has to be cleared first. Ask the user, don't
    decide this yourself.
 2. **Relocation.** `hdCycles.dylib` and `libusd_ms.dylib` point at absolute
    paths in `deps/` and `source/.pixi/`. The conda USD libs have to be copied
