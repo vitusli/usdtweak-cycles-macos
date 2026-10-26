@@ -31,6 +31,18 @@ git_lfs() {
         -C "$1" lfs "${@:2}"
 }
 
+# Drop a CMake build dir whose cached SDK no longer exists (e.g. after an
+# Xcode / Command Line Tools update removed the old SDK)
+drop_stale_cmake_cache() {
+    local cache="$1/CMakeCache.txt" sysroot
+    [ -f "${cache}" ] || return 0
+    sysroot=$(sed -n 's/^CMAKE_OSX_SYSROOT:PATH=//p' "${cache}")
+    if [ -n "${sysroot}" ] && [ ! -d "${sysroot}" ]; then
+        echo "==> Removing stale CMake cache in $1 (missing SDK ${sysroot}) …"
+        rm -rf "$1"
+    fi
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Ensure pixi is installed
 # ─────────────────────────────────────────────────────────────────────────────
@@ -87,6 +99,8 @@ if [ ! -e "${PIXI_LIB}/python" ]; then
     fi
 fi
 
+drop_stale_cmake_cache "${SOURCE_DIR}/.build"
+
 echo "==> Building usdtweak …"
 pixi run -e install install
 
@@ -105,6 +119,8 @@ mkdir -p "${DEPS_DIR}"
 if [ -d "${BLENDER_DIR}/.git" ]; then
     echo "==> Updating Blender (${BLENDER_BRANCH}) …"
     git -C "${BLENDER_DIR}" fetch --depth=1 origin "${BLENDER_BRANCH}"
+    # Revert our patches from a previous build so the checkout can proceed
+    git -C "${BLENDER_DIR}" checkout -- CMakeLists.txt intern/cycles/ 2>/dev/null || true
     git -C "${BLENDER_DIR}" checkout FETCH_HEAD
 else
     echo "==> Cloning Blender (shallow, ${BLENDER_BRANCH}) …"
@@ -133,7 +149,19 @@ fi
 
 if [ -d "${BLENDER_LIBS}/.git" ]; then
     echo "==> Updating Blender precompiled libs …"
-    git -C "${BLENDER_LIBS}" pull --ff-only || true
+    # Undo the USD wrapper swap from a previous build (step 6) so the pull is clean
+    if [ -L "${BLENDER_LIBS}/usd" ]; then
+        rm "${BLENDER_LIBS}/usd"
+        rm -rf "${BLENDER_LIBS}/usd_orig"
+        GIT_LFS_SKIP_SMUDGE=1 git -C "${BLENDER_LIBS}" checkout -- usd
+    fi
+    # LFS objects are fetched below by `git lfs pull`
+    GIT_LFS_SKIP_SMUDGE=1 git \
+        -c filter.lfs.required=true \
+        -c "filter.lfs.clean=git-lfs clean -- %f" \
+        -c "filter.lfs.smudge=git-lfs smudge -- %f" \
+        -c "filter.lfs.process=git-lfs filter-process" \
+        -C "${BLENDER_LIBS}" pull --ff-only
 elif [ -d "${BLENDER_LIBS}" ]; then
     echo "==> Blender precompiled libs directory exists (no .git), skipping clone …"
 else
@@ -178,12 +206,13 @@ echo "==> Created libusd_ms.dylib ($(wc -c < "${COMPAT_DIR}/lib/libusd_ms.dylib"
 # Replace Blender's USD with our wrapper (backup original first)
 if [ -d "${BLENDER_LIBS}/usd" ] && [ ! -L "${BLENDER_LIBS}/usd" ]; then
     echo "==> Backing up Blender's original USD to usd_orig …"
+    rm -rf "${BLENDER_LIBS}/usd_orig"
     mv "${BLENDER_LIBS}/usd" "${BLENDER_LIBS}/usd_orig"
 fi
 ln -sfn "${COMPAT_DIR}" "${BLENDER_LIBS}/usd"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 7. Apply hdCycles patches for USD 26.03 compatibility
+# 7. Apply hdCycles patches for USD 26.x compatibility
 # ─────────────────────────────────────────────────────────────────────────────
 echo "==> Applying hdCycles patches …"
 cd "${BLENDER_DIR}"
@@ -197,6 +226,8 @@ git apply "${PATCHES_DIR}/hdcycles-package-textures.patch"
 # ─────────────────────────────────────────────────────────────────────────────
 # Ensure cmake from pixi env is on PATH
 export PATH="${PIXI_ENV}/bin:$PATH"
+
+drop_stale_cmake_cache "${CYCLES_BUILD}"
 
 echo "==> Configuring Cycles build …"
 cmake -S "${BLENDER_DIR}" -B "${CYCLES_BUILD}" \
@@ -223,6 +254,15 @@ if [ ! -f "${HDCYCLES}" ]; then
 fi
 echo "==> Built hdCycles.dylib ($(du -h "${HDCYCLES}" | cut -f1))"
 
+# Metal compiles its kernels at runtime from source; the install step puts
+# those sources into ${CYCLES_BUILD}/bin/source
+cmake --install "${CYCLES_BUILD}" > /dev/null
+CYCLES_KERNEL_SRC="${CYCLES_BUILD}/bin/source"
+if [ ! -f "${CYCLES_KERNEL_SRC}/kernel/device/metal/kernel.metal" ]; then
+    echo "ERROR: Cycles kernel sources not found after install"
+    exit 1
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 9. Assemble final app bundle
 # ─────────────────────────────────────────────────────────────────────────────
@@ -235,6 +275,8 @@ PLUGIN_DIR="${APP}/Contents/plugin/usd/hdCycles"
 
 mkdir -p "${PLUGIN_DIR}/resources"
 cp "${HDCYCLES}" "${PLUGIN_DIR}/"
+# hdCycles resolves Cycles paths relative to its resource dir
+rsync -a --delete "${CYCLES_KERNEL_SRC}/" "${PLUGIN_DIR}/resources/source/"
 
 cat > "${PLUGIN_DIR}/resources/plugInfo.json" << 'PLUGINFO'
 {
@@ -266,6 +308,6 @@ echo "  Blender:  $(git -C "${BLENDER_DIR}" rev-parse --short HEAD) (${BLENDER_B
 echo "  App:      ${APP}"
 echo ""
 echo "Launch with:"
-echo "  PXR_PLUGINPATH_NAME=\"${APP}/Contents/plugin/usd\" open \"${APP}\""
+echo "  PXR_PLUGINPATH_NAME=\"${APP}/Contents/plugin/usd\" CYCLES_DEVICE=METAL open \"${APP}\""
 echo ""
 echo "Or use: make run"
